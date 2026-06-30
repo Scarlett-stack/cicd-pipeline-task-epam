@@ -24,6 +24,12 @@ pipeline {
             }
         }
 
+        stage('Hadolint Dockerfile') {
+            steps {
+                sh 'docker run --rm -i hadolint/hadolint < Dockerfile || true'
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 script {
@@ -31,6 +37,24 @@ pipeline {
                         sh 'docker build -t nodemain:v1.0 .'
                     } else if (env.BRANCH_NAME == 'dev') {
                         sh 'docker build -t nodedev:v1.0 .'
+                    }
+                }
+            }
+        }
+
+        stage('Scan Docker Image for Vulnerabilities') {
+            steps {
+                script {
+                    if (env.BRANCH_NAME == 'main') {
+                        sh '''
+                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                            aquasec/trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress nodemain:v1.0 || true
+                        '''
+                    } else if (env.BRANCH_NAME == 'dev') {
+                        sh '''
+                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                            aquasec/trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress nodedev:v1.0 || true
+                        '''
                     }
                 }
             }
