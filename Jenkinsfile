@@ -5,6 +5,11 @@ pipeline {
         nodejs 'NodeJS'
     }
 
+    environment {
+        DOCKERHUB_REPO = 'darikb123/cicd-pipeline-task'
+        DOCKERHUB_CREDS = 'bdbcb634-e268-4196-b923-bd2e303a25c6'
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -35,8 +40,10 @@ pipeline {
                 script {
                     if (env.BRANCH_NAME == 'main') {
                         sh 'docker build -t nodemain:v1.0 .'
+                        sh "docker tag nodemain:v1.0 ${DOCKERHUB_REPO}:nodemain-v1.0"
                     } else if (env.BRANCH_NAME == 'dev') {
                         sh 'docker build -t nodedev:v1.0 .'
+                        sh "docker tag nodedev:v1.0 ${DOCKERHUB_REPO}:nodedev-v1.0"
                     }
                 }
             }
@@ -46,29 +53,37 @@ pipeline {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'main') {
-                        sh '''
-                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                            aquasec/trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress nodemain:v1.0 || true
-                        '''
+                        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress nodemain:v1.0 || true'
                     } else if (env.BRANCH_NAME == 'dev') {
-                        sh '''
-                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                            aquasec/trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress nodedev:v1.0 || true
-                        '''
+                        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 0 --severity HIGH,MEDIUM,LOW --no-progress nodedev:v1.0 || true'
                     }
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+
+                        if (env.BRANCH_NAME == 'main') {
+                            sh "docker push ${DOCKERHUB_REPO}:nodemain-v1.0"
+                        } else if (env.BRANCH_NAME == 'dev') {
+                            sh "docker push ${DOCKERHUB_REPO}:nodedev-v1.0"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Trigger Deploy Pipeline') {
             steps {
                 script {
                     if (env.BRANCH_NAME == 'main') {
-                        sh 'docker rm -f nodemain || true'
-                        sh 'docker run -d --name nodemain --expose 3000 -p 3000:3000 nodemain:v1.0'
+                        build job: 'Deploy_to_main', wait: false
                     } else if (env.BRANCH_NAME == 'dev') {
-                        sh 'docker rm -f nodedev || true'
-                        sh 'docker run -d --name nodedev --expose 3001 -p 3001:3000 nodedev:v1.0'
+                        build job: 'Deploy_to_dev', wait: false
                     }
                 }
             }
