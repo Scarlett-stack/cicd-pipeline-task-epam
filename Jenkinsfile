@@ -1,9 +1,5 @@
 pipeline {
-    agent any
-
-    tools {
-        nodejs 'NodeJS'
-    }
+    agent none
 
     environment {
         DOCKERHUB_REPO = 'darikb123/cicd-pipeline-task'
@@ -12,30 +8,53 @@ pipeline {
 
     stages {
         stage('Checkout') {
+            agent any
             steps {
                 checkout scm
             }
         }
 
         stage('Build') {
+            agent {
+                docker {
+                    image 'node:7.8.0'
+                    args '-u root'
+                    reuseNode true
+                }
+            }
             steps {
                 sh 'npm install'
             }
         }
 
         stage('Test') {
+            agent {
+                docker {
+                    image 'node:7.8.0'
+                    args '-u root'
+                    reuseNode true
+                }
+            }
             steps {
                 sh 'npm test -- --watchAll=false'
             }
         }
 
         stage('Hadolint Dockerfile') {
+            agent {
+                docker {
+                    image 'hadolint/hadolint'
+                    args '--entrypoint=""'
+                    reuseNode true
+                }
+            }
             steps {
-                sh 'docker run --rm -i hadolint/hadolint < Dockerfile || true'
+                sh 'hadolint Dockerfile || true'
             }
         }
 
         stage('Build Docker Image') {
+            agent any
             steps {
                 script {
                     if (env.BRANCH_NAME == 'main') {
@@ -50,6 +69,7 @@ pipeline {
         }
 
         stage('Scan Docker Image for Vulnerabilities') {
+            agent any
             steps {
                 script {
                     if (env.BRANCH_NAME == 'main') {
@@ -62,6 +82,7 @@ pipeline {
         }
 
         stage('Push Docker Image') {
+            agent any
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -78,6 +99,7 @@ pipeline {
         }
 
         stage('Trigger Deploy Pipeline') {
+            agent any
             steps {
                 script {
                     if (env.BRANCH_NAME == 'main') {
