@@ -39,17 +39,10 @@ pipeline {
                 sh 'npm test -- --watchAll=false'
             }
         }
-
         stage('Hadolint Dockerfile') {
-            agent {
-                docker {
-                    image 'hadolint/hadolint'
-                    args '--entrypoint=""'
-                    reuseNode true
-                }
-            }
+            agent any
             steps {
-                sh 'hadolint Dockerfile || true'
+                sh 'docker run --rm -i hadolint/hadolint < Dockerfile || true'
             }
         }
 
